@@ -13,7 +13,9 @@ import base64
 import functools
 import io
 import os
+import re
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -25,18 +27,6 @@ from dotenv import dotenv_values, load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import OpenAI
 from supabase import Client, create_client
-
-
-def _has_docx_module() -> bool:
-    """Streamlit Cloud 등에서 find_spec 만으로 놓치는 경우를 줄이기 위해 실제 import 로 판별."""
-    try:
-        from docx import Document  # noqa: F401
-    except Exception:
-        return False
-    return True
-
-
-_HAS_DOCX = _has_docx_module()
 
 # `streamlit run` 시 cwd가 프로젝트 루트가 아닐 수 있어, .env는 이 파일 기준으로 찾음
 _APP_DIR = Path(__file__).resolve().parent
@@ -52,26 +42,80 @@ def _truncate_label(name: str, max_len: int = 50) -> str:
     return n[: max_len - 1] + "…"
 
 
-def build_draft_docx_bytes(body: str) -> bytes:
-    """생성 본문을 UTF-8 기준 줄 단위 Word(.docx)로 직렬화."""
-    try:
-        from docx import Document
-    except ModuleNotFoundError as e:
-        raise RuntimeError(
-            "Word 저장에 필요한 `python-docx` 패키지가 없습니다. "
-            "프로젝트 가상환경에서 다음을 실행하세요: pip install python-docx"
-        ) from e
-    doc = Document()
-    doc.core_properties.title = "생성 초안"
-    if not body.strip():
-        doc.add_paragraph("")
-    else:
-        for line in body.splitlines():
-            doc.add_paragraph(line)
+def _sanitize_docx_plain_text(s: str) -> str:
+    """OOXML w:t 에서 문제 되는 제어 문자만 제거."""
+    return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", s)
+
+
+def _draft_docx_ooxml_zip_bytes(body: str) -> bytes:
+    """
+    python-docx 없이 최소 OOXML(.docx)만 생성.
+    Streamlit Cloud에서 패키지 미설치·import 실패여도 Word에서 열 수 있게 함.
+    """
+    from xml.sax.saxutils import escape
+
+    lines = body.splitlines()
+    if not lines:
+        lines = [body] if body else [""]
+
+    paras: list[str] = []
+    for line in lines:
+        t = escape(_sanitize_docx_plain_text(line))
+        paras.append(
+            f'<w:p><w:r><w:t xml:space="preserve">{t}</w:t></w:r></w:p>'
+        )
+    paras_xml = "".join(paras)
+
+    document_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        f"<w:body>{paras_xml}"
+        "<w:sectPr>"
+        '<w:pgSz w:w="11906" w:h="16838"/>'
+        '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" '
+        'w:header="708" w:footer="708" w:gutter="0"/>'
+        "</w:sectPr></w:body></w:document>"
+    )
+
+    content_types = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>"""
+
+    package_rels = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>"""
+
     buf = io.BytesIO()
-    doc.save(buf)
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", content_types)
+        zf.writestr("_rels/.rels", package_rels)
+        zf.writestr("word/document.xml", document_xml.encode("utf-8"))
     buf.seek(0)
     return buf.getvalue()
+
+
+def build_draft_docx_bytes(body: str) -> bytes:
+    """생성 본문을 줄 단위 Word(.docx)로 직렬화. python-docx가 없으면 OOXML(zip) 폴백."""
+    try:
+        from docx import Document
+
+        doc = Document()
+        doc.core_properties.title = "생성 초안"
+        if not body.strip():
+            doc.add_paragraph("")
+        else:
+            for line in body.splitlines():
+                doc.add_paragraph(line)
+        buf = io.BytesIO()
+        doc.save(buf)
+        buf.seek(0)
+        return buf.getvalue()
+    except Exception:
+        return _draft_docx_ooxml_zip_bytes(body)
 
 
 def _short_upload_ts(val: Any) -> str:
@@ -1062,21 +1106,14 @@ def main() -> None:
         file_stem = f"창작초안_{stamp}" if stamp else "창작초안"
         d_col1, d_col2 = st.columns(2)
         with d_col1:
-            if _HAS_DOCX:
-                st.download_button(
-                    label="Word (.docx) 다운로드",
-                    data=build_draft_docx_bytes(draft_text),
-                    file_name=f"{file_stem}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    key="download_draft_docx",
-                    use_container_width=True,
-                )
-            else:
-                st.caption(
-                    "Word 다운로드: 저장소 루트의 `requirements.txt`에 `python-docx`(및 의존성 `lxml`)가 "
-                    "포함됐는지 확인한 뒤 GitHub에 push하고, Streamlit Cloud에서 **앱 재시작**(또는 다시 배포)하세요. "
-                    "로컬은 `pip install python-docx` 후 앱을 다시 실행하면 됩니다."
-                )
+            st.download_button(
+                label="Word (.docx) 다운로드",
+                data=build_draft_docx_bytes(draft_text),
+                file_name=f"{file_stem}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="download_draft_docx",
+                use_container_width=True,
+            )
         with d_col2:
             st.download_button(
                 label="TXT 다운로드",

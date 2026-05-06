@@ -59,7 +59,7 @@ streamlit run creative_writer_ai.py
 
 ### Streamlit Community Cloud에 올린 경우
 
-- Cloud 빌드는 **저장소 루트의 `requirements.txt`**로 `pip install`을 실행합니다. **Word 다운로드**에 필요한 **`python-docx`**(그리고 `lxml`)가 그 파일에 있어야 합니다.
+- Cloud 빌드는 **저장소 루트의 `requirements.txt`**로 `pip install`을 실행합니다. **Word(.docx)** 는 `python-docx`가 있으면 그걸로 저장하고, 없거나 import에 실패하면 **표준 라이브러리만으로 만든 최소 OOXML**로도 다운로드됩니다(설치 이슈 시에도 버튼 동작).
 - 로컬에서 추가한 줄이 있다면 **`git push`까지 해서 원격 브랜치에 반영**한 뒤, 대시보드에서 **재배포**하거나 앱 메뉴의 **재시작**(Reboot)으로 새 의존성이 설치되게 하세요.
 - 환경 변수(Supabase, OpenAI 등)는 Cloud의 **Secrets**에 넣습니다(`.env`는 Git에 올리지 않음).
 - **라이트 테마**: `.streamlit/config.toml`에서 `base = "light"` 등으로 지정해 두었습니다. 저장소에 포함되므로 Cloud에도 함께 반영됩니다.
