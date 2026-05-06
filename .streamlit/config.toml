@@ -1,0 +1,8 @@
+# 로컬 / Streamlit Community Cloud — 라이트 테마 기준(baseline)
+
+[theme]
+base = "light"
+primaryColor = "#8B6914"
+backgroundColor = "#F5F0E6"
+secondaryBackgroundColor = "#EBE5D9"
+textColor = "#1A1815"

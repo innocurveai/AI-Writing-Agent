@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import base64
 import functools
-import importlib.util
 import io
 import os
 import uuid
@@ -27,7 +26,17 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import OpenAI
 from supabase import Client, create_client
 
-_HAS_DOCX = importlib.util.find_spec("docx") is not None
+
+def _has_docx_module() -> bool:
+    """Streamlit Cloud 등에서 find_spec 만으로 놓치는 경우를 줄이기 위해 실제 import 로 판별."""
+    try:
+        from docx import Document  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
+_HAS_DOCX = _has_docx_module()
 
 # `streamlit run` 시 cwd가 프로젝트 루트가 아닐 수 있어, .env는 이 파일 기준으로 찾음
 _APP_DIR = Path(__file__).resolve().parent
@@ -244,7 +253,12 @@ def inject_hanji_theme() -> None:
     st.markdown(
         """
 <style>
+  /* OS/브라우저 다크 선호와 무관하게 앱 전역을 라이트 톤으로 고정 */
+  :root {
+    color-scheme: light !important;
+  }
   html, body, [data-testid="stAppViewContainer"] {
+    color-scheme: light !important;
     background-color: #e8ddc4 !important;
     background-image:
       repeating-linear-gradient(
@@ -371,6 +385,11 @@ def inject_hanji_theme() -> None:
   }
   .stAlert, [data-baseweb="notification"] {
     background: rgba(255, 251, 235, 0.95) !important;
+  }
+  .stApp,
+  header[data-testid="stHeader"],
+  section[data-testid="stSidebar"] {
+    color-scheme: light !important;
   }
 </style>
 """,
@@ -1054,7 +1073,9 @@ def main() -> None:
                 )
             else:
                 st.caption(
-                    "Word 다운로드: 가상환경에서 `pip install python-docx` 후 앱을 다시 실행하세요."
+                    "Word 다운로드: 저장소 루트의 `requirements.txt`에 `python-docx`(및 의존성 `lxml`)가 "
+                    "포함됐는지 확인한 뒤 GitHub에 push하고, Streamlit Cloud에서 **앱 재시작**(또는 다시 배포)하세요. "
+                    "로컬은 `pip install python-docx` 후 앱을 다시 실행하면 됩니다."
                 )
         with d_col2:
             st.download_button(

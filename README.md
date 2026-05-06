@@ -57,6 +57,13 @@ streamlit run creative_writer_ai.py
 
 브라우저에서 안내되는 주소(기본 `http://localhost:8501`)로 접속합니다.
 
+### Streamlit Community Cloud에 올린 경우
+
+- Cloud 빌드는 **저장소 루트의 `requirements.txt`**로 `pip install`을 실행합니다. **Word 다운로드**에 필요한 **`python-docx`**(그리고 `lxml`)가 그 파일에 있어야 합니다.
+- 로컬에서 추가한 줄이 있다면 **`git push`까지 해서 원격 브랜치에 반영**한 뒤, 대시보드에서 **재배포**하거나 앱 메뉴의 **재시작**(Reboot)으로 새 의존성이 설치되게 하세요.
+- 환경 변수(Supabase, OpenAI 등)는 Cloud의 **Secrets**에 넣습니다(`.env`는 Git에 올리지 않음).
+- **라이트 테마**: `.streamlit/config.toml`에서 `base = "light"` 등으로 지정해 두었습니다. 저장소에 포함되므로 Cloud에도 함께 반영됩니다.
+
 ## 사용 흐름
 
 1. **사이드바**에서 학습용 문서(PDF, TXT, MD 등)를 업로드하고 장르를 지정합니다. 임베딩은 `text-embedding-3-small`(1536차원)을 사용합니다.
@@ -110,6 +117,7 @@ streamlit run creative_writer_ai.py
 | `creative_writer_ai.py` | Streamlit UI, 업로드·청킹·임베딩·검색·LLM 호출 |
 | `supabase_schema.sql` | DB 테이블, RLS, `match_document_embeddings` RPC |
 | `requirements.txt` | Python 의존성 |
+| `.streamlit/config.toml` | Streamlit 테마(라이트 모드 기준 등) |
 | `.env` | 비밀 키(로컬 전용, 저장소에 커밋하지 않음) |
 
 검색 시 가져올 레퍼런스 청크 개수(`STYLE_REFERENCE_TOP_K`)는 위 **«텍스트 청킹은 어떻게 동작하나요?»** 절을 참고하세요.
