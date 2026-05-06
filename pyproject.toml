@@ -1,0 +1,16 @@
+[project]
+name = "creative-writer-ai"
+version = "0.1.0"
+description = "고유 문체 기반 AI Writing Agent (Streamlit)"
+# supabase → storage3 → pyiceberg: Windows에서 3.14용 휠이 없으면 MSVC 빌드가 필요합니다.
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "streamlit>=1.28.0",
+  "python-dotenv>=1.0.0",
+  "openai>=1.40.0",
+  "supabase>=2.4.0",
+  "pdfplumber>=0.11.0",
+  "langchain>=0.2.0",
+  "langchain-text-splitters>=0.2.0",
+  "langchain-openai>=0.1.0",
+]
